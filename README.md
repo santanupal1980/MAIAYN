@@ -1,4 +1,4 @@
-<B>The Transformer model in Multisource Attention Is All You Need (MAIAYN)：a Keras implementation.</B>
+<B>The Transformer model in Multisource Attention Is All You Need (MAIAYN)</B>
   
 <b>The code and style was borrowed from the repository repository https://github.com/Lsdefine/attention-is-all-you-need-keras </b>
 
