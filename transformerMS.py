@@ -395,20 +395,23 @@ class Transformer:
 
         enc1_output = self.encoder1(src1_seq, src1_pos)
         enc2_output = self.encoder2(src2_seq, src2_pos)
+        enc_output = self.jointencoder(src1_seq, src2_seq, enc1_output, enc2_output)
 
         self.encode_model1 = Model(src1_seq_input, enc1_output)
         self.encode_model2 = Model(src2_seq_input, enc2_output)
+        self.jointencoder_model = Model([src1_seq, src2_seq], enc_output)
 
-        enc1_ret_input = Input(shape=(None, self.d_model))
-        enc2_ret_input = Input(shape=(None, self.d_model))
+        enc_ret_input = Input(shape=(None, self.d_model))
+        #enc2_ret_input = Input(shape=(None, self.d_model))
 
-        dec_output = self.decoder(tgt_seq, tgt_pos, src1_seq, src2_seq, enc1_ret_input, enc2_ret_input)
+        dec_output = self.decoder(tgt_seq, tgt_pos, src1_seq, src2_seq, enc_ret_input)
         final_output = self.target_layer(dec_output)
-        self.decode_model = Model([src1_seq_input, src2_seq_input, enc1_ret_input, enc2_ret_input, tgt_seq_input],
+        self.decode_model = Model([src1_seq_input, src2_seq_input, enc_ret_input, tgt_seq_input],
                                   final_output)
 
         self.encode_model1.compile('adam', 'mse')
         self.encode_model2.compile('adam', 'mse')
+        self.jointencoder_model.compile('adam', 'mse')
         self.decode_model.compile('adam', 'mse')
 
     def decode_sequence_fast(self, input1_seq, input2_seq, delimiter=' '):
@@ -418,12 +421,13 @@ class Transformer:
 
         enc1_ret = self.encode_model1.predict_on_batch(src1_seq)
         enc2_ret = self.encode_model2.predict_on_batch(src2_seq)
+        enc_ret = self.jointencoder_model.predict_on_batch([src1_seq, src2_seq])
 
         decoded_tokens = []
         target_seq = np.zeros((1, self.len_limit), dtype='int32')
         target_seq[0, 0] = self.o_tokens.startid()
         for i in range(self.len_limit - 1):
-            output = self.decode_model.predict_on_batch([src1_seq, src2_seq, enc1_ret, enc2_ret, target_seq])
+            output = self.decode_model.predict_on_batch([src1_seq, src2_seq, enc_ret, target_seq])
             sampled_index = np.argmax(output[0, i, :])
             sampled_token = self.o_tokens.token(sampled_index)
             decoded_tokens.append(sampled_token)
@@ -440,6 +444,7 @@ class Transformer:
 
         enc1_ret = self.encode_model1.predict_on_batch(src1_seq)
         enc2_ret = self.encode_model2.predict_on_batch(src2_seq)
+        enc_ret = self.jointencoder_model.predict_on_batch([src1_seq, src2_seq])
 
         final_results = []
         decoded_tokens = [[] for _ in range(topk)]
@@ -449,7 +454,7 @@ class Transformer:
         target_seq[:, 0] = self.o_tokens.startid()
         for i in range(self.len_limit - 1):
             if lastk == 0 or len(final_results) > topk * 3: break
-            output = self.decode_model.predict_on_batch([src1_seq, src2_seq, enc1_ret, enc2_ret, target_seq])
+            output = self.decode_model.predict_on_batch([src1_seq, src2_seq, enc_ret, target_seq])
             output = np.exp(output[:, i, :])
             output = np.log(output / np.sum(output, -1, keepdims=True) + 1e-8)
             cands = []

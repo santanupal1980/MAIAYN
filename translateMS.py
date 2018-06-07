@@ -3,15 +3,17 @@ import codecs
 import dataloader as dd
 from keras.optimizers import *
 from keras.callbacks import *
+from config import config as cfg
 
-itokens1, itokens2, otokens = dd.MakeS2SDictMS('train.tok.ms', dict_file='apevocab.txt')
-Xtrain1, Xtrain2, Ytrain = dd.MakeS2SDataMS('train.tok.ms', itokens1, itokens2, otokens, h5_file='ape.train.h5')
-Xvalid1, Xvalid2, Yvalid = dd.MakeS2SDataMS('dev.tok.ms', itokens1, itokens2, otokens, h5_file='ape.valid.h5')
+itokens1, itokens2, otokens = dd.MakeS2SDictMS(cfg.trn_vocab_corpus, dict_file=cfg.vocab_file) # preparing vocabulary ******* DONT CHANGE FOR FINE TUNE***********
+Xtrain1, Xtrain2, Ytrain = dd.MakeS2SDataMS(cfg.training_corpus, itokens1, itokens2, otokens, h5_file=cfg.training_corpus+'.h5') #prepare data, if fine tuning change both inputs
+Xvalid1, Xvalid2, Yvalid = dd.MakeS2SDataMS(cfg.validation_corpus, itokens1, itokens2, otokens, h5_file=cfg.validation_corpus+'.h5') # prepare validation data
 
-print('seq 1 words:', itokens1.num())
-print('seq 2 words:', itokens2.num())
-print('seq 3 words:', otokens.num())
-print('train shapes:', Xtrain1.shape, Xtrain2.shape, Ytrain.shape)
+print('seq 1 words:', itokens1.num()) # Number of source vocabulary
+print('seq 2 words:', itokens2.num()) # Number of mt vocabulary
+print('seq 3 words:', otokens.num()) # Number of target vocabulary
+
+print('train shapes:', Xtrain1.shape, Xtrain2.shape, Ytrain.shape) #Shapes (total corpus size, maximum sentence length)
 print('valid shapes:', Xvalid1.shape, Xvalid2.shape, Yvalid.shape)
 
 '''
@@ -23,24 +25,24 @@ s2s.model.fit([Xtrain, Ytrain], None, batch_size=64, epochs=30, validation_data=
 
 from transformerMS import Transformer, LRSchedulerPerStep, LRSchedulerPerEpoch
 
-d_model = 256
-s2s = Transformer(itokens1, itokens2, otokens, len_limit=400, d_model=d_model, d_inner_hid=512, \
-                  n_head=4, d_k=64, d_v=64, layers=2, dropout=0.1)
+d_model = cfg.d_model
+s2s = Transformer(itokens1, itokens2, otokens, len_limit=cfg.len_limit, d_model=d_model, d_inner_hid=cfg.d_inner_hid, \
+                  n_head=cfg.n_head, d_k=cfg.d_k, d_v=cfg.d_v, layers=cfg.layers, dropout=cfg.dropout)
 
-lr_scheduler = LRSchedulerPerStep(d_model, 4000)  # there is a warning that it is slow, however, it's ok.
+lr_scheduler = LRSchedulerPerStep(d_model, cfg.warm_up)  # there is a warning that it is slow, however, it's ok.
 # lr_scheduler = LRSchedulerPerEpoch(d_model, 4000, Xtrain.shape[0]/64)  # this scheduler only update lr per epoch
-model_saver = ModelCheckpoint('ape.model.h5', save_best_only=True, save_weights_only=True)
+model_saver = ModelCheckpoint(cfg.output_model+".h5", save_best_only=True, save_weights_only=True)
 
-s2s.compile(Adam(0.001, 0.9, 0.98, epsilon=1e-9))
+s2s.compile(Adam(cfg.learning_rate, 0.9, 0.98, epsilon=1e-9))
 s2s.model.summary()
 try:
-    s2s.model.load_weights('ape.model.h5')
+    s2s.model.load_weights(cfg.output_model+".h5")
+    print("the model has been loaded!")
     nbest = 1
-    if not os.path.exists('results'): os.mkdir('results')
-    with codecs.open('dev.tok.ms', 'r', 'utf-8') as fin, codecs.open("results/dev.joint.greedy", "w",
-                                                                     "utf-8") as fout, codecs.open("results/dev.joint.beam",
-                                                                                                   "w",
-                                                                                                   "utf-8") as fout1:
+    if not os.path.exists('results_500K-wmt'): os.mkdir('results_500K-wmt')
+    with codecs.open('dev.tok.ms', 'r', 'utf-8') as fin, \
+            codecs.open("results/dev.joint.greedy", "w", "utf-8") as fout, \
+            codecs.open("results/dev.joint.beam", "w", "utf-8") as fout1:
         for line in fin.read().split('\n'):
             values = line.split("\t")
             src = values[0]
@@ -55,7 +57,7 @@ try:
             pe = s2s.beam_search(input1_seq, input2_seq)
             for got_beam, got_prob in pe[:nbest]:
                 print('T-B\t' + got_beam, got_prob)  # y is the predicted probability
-                fout1.write(got_beam+"\n")
+                fout1.write(got_beam + "\n")
                 fout1.flush()
-except:
-    print('\n\n Unable to load')
+except Exception as e:
+    print('\n\n Unable to load!\n'+ e)
