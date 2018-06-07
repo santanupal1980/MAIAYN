@@ -18,6 +18,6 @@ The current implementation is a concatenation of two separate self-attended enco
   
   2. Update config.py
   
-  3. run python trainMS.py
+  3. run python trainMS.py (Modify if you want to run bi-attention)
   
   4. python translateMS.py
