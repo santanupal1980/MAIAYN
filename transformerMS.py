@@ -55,17 +55,17 @@ class MultiHeadAttention():
         self.d_v = d_v
         self.dropout = dropout
         if mode == 0:
-            self.qs_layer = Dense(n_head * d_k, use_bias=False)
-            self.ks_layer = Dense(n_head * d_k, use_bias=False)
-            self.vs_layer = Dense(n_head * d_v, use_bias=False)
+            self.qs_layer = Dense(n_head * d_k, use_bias=False, activation = "relu")
+            self.ks_layer = Dense(n_head * d_k, use_bias=False, activation = "relu")
+            self.vs_layer = Dense(n_head * d_v, use_bias=False, activation = "relu")
         elif mode == 1:
             self.qs_layers = []
             self.ks_layers = []
             self.vs_layers = []
             for _ in range(n_head):
-                self.qs_layers.append(TimeDistributed(Dense(d_k, use_bias=False)))
-                self.ks_layers.append(TimeDistributed(Dense(d_k, use_bias=False)))
-                self.vs_layers.append(TimeDistributed(Dense(d_v, use_bias=False)))
+                self.qs_layers.append(TimeDistributed(Dense(d_k, use_bias=False, activation = "relu")))
+                self.ks_layers.append(TimeDistributed(Dense(d_k, use_bias=False, activation = "relu")))
+                self.vs_layers.append(TimeDistributed(Dense(d_v, use_bias=False, activation = "relu")))
         self.attention = ScaledDotProductAttention(d_model)
         self.layer_norm = LayerNormalization()
         self.w_o = TimeDistributed(Dense(d_model))

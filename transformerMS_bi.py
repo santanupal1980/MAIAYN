@@ -58,17 +58,17 @@ class MultiHeadAttention():
         self.d_v = d_v
         self.dropout = dropout
         if mode == 0:
-            self.qs_layer = Dense(n_head * d_k, use_bias=False)
-            self.ks_layer = Dense(n_head * d_k, use_bias=False)
-            self.vs_layer = Dense(n_head * d_v, use_bias=False)
+            self.qs_layer = Dense(n_head * d_k, use_bias=False, activation = "relu")
+            self.ks_layer = Dense(n_head * d_k, use_bias=False, activation = "relu")
+            self.vs_layer = Dense(n_head * d_v, use_bias=False, activation = "relu")
         elif mode == 1:
             self.qs_layers = []
             self.ks_layers = []
             self.vs_layers = []
             for _ in range(n_head):
-                self.qs_layers.append(TimeDistributed(Dense(d_k, use_bias=False)))
-                self.ks_layers.append(TimeDistributed(Dense(d_k, use_bias=False)))
-                self.vs_layers.append(TimeDistributed(Dense(d_v, use_bias=False)))
+                self.qs_layers.append(TimeDistributed(Dense(d_k, use_bias=False, activation = "relu")))
+                self.ks_layers.append(TimeDistributed(Dense(d_k, use_bias=False, activation = "relu")))
+                self.vs_layers.append(TimeDistributed(Dense(d_v, use_bias=False, activation = "relu")))
         self.attention = ScaledDotProductAttention(d_model)
         self.layer_norm = LayerNormalization()
         self.w_o = TimeDistributed(Dense(d_model))
@@ -214,7 +214,9 @@ class JointEncoder():
         self.layers = [EncoderLayer(d_model, d_inner_hid, n_head, d_k, d_v, dropout) for _ in range(layers)]
 
     def __call__(self, src1_seq, src2_seq, enc1, enc2, return_att=False, active_layers=999):
+        #concatenate both encoders
         x =  concatenate([enc1, enc2], axis=1)
+        #concatenate both sequences for mask
         src_seq = concatenate([src1_seq, src2_seq], axis=1)
         if return_att: atts = []
         mask = Lambda(lambda x: GetPadMask(x, x))(src_seq)
