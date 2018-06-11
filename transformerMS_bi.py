@@ -10,7 +10,7 @@ from dataloader import TokenList, pad_to_longest
 
 
 class LayerNormalization(Layer):
-    def __init__(self, eps=1e-6, **kwargs):
+    def __init__(self, eps=1e-8, **kwargs):
         self.eps = eps
         super().__init__(**kwargs)
 
@@ -22,8 +22,9 @@ class LayerNormalization(Layer):
         super().build(input_shape)
 
     def call(self, x):
-        mean = K.mean(x, axis=-1, keepdims=True)
-        std = K.std(x, axis=-1, keepdims=True)
+        mean, std = tf.nn.moments(x, [-1], keep_dims=True)
+        #mean = K.mean(x, axis=-1, keepdims=True)
+        #std = K.std(x, axis=-1, keepdims=True)
         return self.gamma * (x - mean) / (std + self.eps) + self.beta
 
     def compute_output_shape(self, input_shape):
@@ -58,17 +59,17 @@ class MultiHeadAttention():
         self.d_v = d_v
         self.dropout = dropout
         if mode == 0:
-            self.qs_layer = Dense(n_head * d_k, use_bias=False)
-            self.ks_layer = Dense(n_head * d_k, use_bias=False)
-            self.vs_layer = Dense(n_head * d_v, use_bias=False)
+            self.qs_layer = Dense(n_head * d_k, use_bias=False, activation='relu')
+            self.ks_layer = Dense(n_head * d_k, use_bias=False, activation='relu')
+            self.vs_layer = Dense(n_head * d_v, use_bias=False, activation='relu')
         elif mode == 1:
             self.qs_layers = []
             self.ks_layers = []
             self.vs_layers = []
             for _ in range(n_head):
-                self.qs_layers.append(TimeDistributed(Dense(d_k, use_bias=False)))
-                self.ks_layers.append(TimeDistributed(Dense(d_k, use_bias=False)))
-                self.vs_layers.append(TimeDistributed(Dense(d_v, use_bias=False)))
+                self.qs_layers.append(TimeDistributed(Dense(d_k, use_bias=False, activation='relu')))
+                self.ks_layers.append(TimeDistributed(Dense(d_k, use_bias=False, activation='relu')))
+                self.vs_layers.append(TimeDistributed(Dense(d_v, use_bias=False, activation='relu')))
         self.attention = ScaledDotProductAttention(d_model)
         self.layer_norm = LayerNormalization()
         self.w_o = TimeDistributed(Dense(d_model))
