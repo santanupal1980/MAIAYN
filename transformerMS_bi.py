@@ -22,9 +22,8 @@ class LayerNormalization(Layer):
         super().build(input_shape)
 
     def call(self, x):
-        mean, std = tf.nn.moments(x, [-1], keep_dims=True)
-        #mean = K.mean(x, axis=-1, keepdims=True)
-        #std = K.std(x, axis=-1, keepdims=True)
+        mean = K.mean(x, axis=-1, keepdims=True)
+        std = K.std(x, axis=-1, keepdims=True)
         return self.gamma * (x - mean) / (std + self.eps) + self.beta
 
     def compute_output_shape(self, input_shape):
@@ -37,8 +36,8 @@ class ScaledDotProductAttention():
         self.dropout = Dropout(attn_dropout)
 
     def __call__(self, q, k, v, mask):
-        attn1 = Lambda(lambda x: K.batch_dot(x[0], x[1], axes=[2, 2]) / self.temper)([q, k]) # forward attention
-        attn2 = Lambda(lambda x: K.batch_dot(x[0], x[1], axes=[2, 2]) / self.temper)([q, k]) # backward attention
+        attn1 = Lambda(lambda x: K.batch_dot(x[0], x[1], axes=[2, 2]) / self.temper)([q, k])  # forward attention
+        attn2 = Lambda(lambda x: K.batch_dot(x[0], x[1], axes=[2, 2]) / self.temper)([q, k])  # backward attention
 
         attn = Average()([attn1, attn2])
         if mask is not None:
@@ -59,17 +58,17 @@ class MultiHeadAttention():
         self.d_v = d_v
         self.dropout = dropout
         if mode == 0:
-            self.qs_layer = Dense(n_head * d_k, use_bias=False, activation='relu')
-            self.ks_layer = Dense(n_head * d_k, use_bias=False, activation='relu')
-            self.vs_layer = Dense(n_head * d_v, use_bias=False, activation='relu')
+            self.qs_layer = Dense(n_head * d_k, use_bias=False, activation="relu")
+            self.ks_layer = Dense(n_head * d_k, use_bias=False, activation="relu")
+            self.vs_layer = Dense(n_head * d_v, use_bias=False, activation="relu")
         elif mode == 1:
             self.qs_layers = []
             self.ks_layers = []
             self.vs_layers = []
             for _ in range(n_head):
-                self.qs_layers.append(TimeDistributed(Dense(d_k, use_bias=False, activation='relu')))
-                self.ks_layers.append(TimeDistributed(Dense(d_k, use_bias=False, activation='relu')))
-                self.vs_layers.append(TimeDistributed(Dense(d_v, use_bias=False, activation='relu')))
+                self.qs_layers.append(TimeDistributed(Dense(d_k, use_bias=False, activation="relu")))
+                self.ks_layers.append(TimeDistributed(Dense(d_k, use_bias=False, activation="relu")))
+                self.vs_layers.append(TimeDistributed(Dense(d_v, use_bias=False, activation="relu")))
         self.attention = ScaledDotProductAttention(d_model)
         self.layer_norm = LayerNormalization()
         self.w_o = TimeDistributed(Dense(d_model))
@@ -207,6 +206,7 @@ class Encoder():
             if return_att: atts.append(att)
         return (x, atts) if return_att else x
 
+
 class JointEncoder():
     def __init__(self, d_model, d_inner_hid, n_head, d_k, d_v, \
                  layers=6, dropout=0.1, word_emb=None, pos_emb=None):
@@ -215,7 +215,9 @@ class JointEncoder():
         self.layers = [EncoderLayer(d_model, d_inner_hid, n_head, d_k, d_v, dropout) for _ in range(layers)]
 
     def __call__(self, src1_seq, src2_seq, enc1, enc2, return_att=False, active_layers=999):
-        x =  concatenate([enc1, enc2], axis=1)
+        # concatenate both encoders
+        x = concatenate([enc1, enc2], axis=1)
+        # concatenate both sequences for mask
         src_seq = concatenate([src1_seq, src2_seq], axis=1)
         if return_att: atts = []
         mask = Lambda(lambda x: GetPadMask(x, x))(src_seq)
@@ -247,7 +249,7 @@ class Decoder():
 
         ######################################## Joint ################################
         enc_mask = concatenate([enc1_mask, enc2_mask], axis=-1)
-        #enc_output = concatenate([enc1_output, enc2_output], axis=1)
+        # enc_output = concatenate([enc1_output, enc2_output], axis=1)
 
         if return_att: self_atts, enc_atts = [], []
         for dec_layer in self.layers[:active_layers]:
@@ -288,10 +290,33 @@ class Transformer:
         self.encoder2 = Encoder(d_model, d_inner_hid, n_head, d_k, d_v, layers, dropout, \
                                 word_emb=i_word_emb2, pos_emb=pos_emb)
         self.jointencoder = JointEncoder(d_model, d_inner_hid, n_head, d_k, d_v, layers, dropout, \
-                                word_emb=i_word_emb2, pos_emb=pos_emb)
+                                         word_emb=i_word_emb2, pos_emb=pos_emb)
         self.decoder = Decoder(d_model, d_inner_hid, n_head, d_k, d_v, layers, dropout, \
                                word_emb=o_word_emb, pos_emb=pos_emb)
         self.target_layer = TimeDistributed(Dense(o_tokens.num(), use_bias=False))
+
+    def embedding(self, inputs,
+                  vocab_size,
+                  num_units,
+                  zero_pad=True,
+                  scale=True,
+                  scope="embedding",
+                  reuse=None):
+
+        with tf.variable_scope(scope, reuse=reuse):
+            lookup_table = tf.get_variable('lookup_table',
+                                           dtype=tf.float32,
+                                           shape=[vocab_size, num_units],
+                                           initializer=tf.contrib.layers.xavier_initializer())
+            if zero_pad:
+                lookup_table = tf.concat((tf.zeros(shape=[1, num_units]),
+                                          lookup_table[1:, :]), 0)
+            outputs = tf.nn.embedding_lookup(lookup_table, inputs)
+
+            if scale:
+                outputs = outputs * (num_units ** 0.5)
+
+        return outputs
 
     def get_pos_seq(self, x):
         mask = K.cast(K.not_equal(x, 0), 'int32')
@@ -317,7 +342,8 @@ class Transformer:
 
         enc1_output = self.encoder1(src1_seq, src1_pos, active_layers=active_layers)  # configuring encoder for SRC
         enc2_output = self.encoder2(src2_seq, src2_pos, active_layers=active_layers)  # Configuring encoder for MT
-        enc_output = self.jointencoder(src1_seq, src2_seq, enc1_output, enc2_output, active_layers=active_layers)  # Configuring jointencoder for MT
+        enc_output = self.jointencoder(src1_seq, src2_seq, enc1_output, enc2_output,
+                                       active_layers=active_layers)  # Configuring jointencoder for MT
 
         dec_output = self.decoder(tgt_seq, tgt_pos, src1_seq, src2_seq, enc_output,
                                   active_layers=active_layers)
@@ -406,7 +432,7 @@ class Transformer:
         self.jointencoder_model = Model([src1_seq, src2_seq], enc_output)
 
         enc_ret_input = Input(shape=(None, self.d_model))
-        #enc2_ret_input = Input(shape=(None, self.d_model))
+        # enc2_ret_input = Input(shape=(None, self.d_model))
 
         dec_output = self.decoder(tgt_seq, tgt_pos, src1_seq, src2_seq, enc_ret_input)
         final_output = self.target_layer(dec_output)
@@ -510,6 +536,7 @@ class LRSchedulerPerEpoch(Callback):
         K.set_value(self.model.optimizer.lr, lr)
 
 
+'''
 if __name__ == '__main__':
     itokens1 = TokenList(list('0123456789'))
     itokens2 = TokenList(list('0123456789'))
@@ -556,4 +583,5 @@ if __name__ == '__main__':
     s2s.model.fit([X1, X2, Y], None, batch_size=256, epochs=40,
                   validation_split=0.05,
                   callbacks=[TestCallback(), lr_scheduler])
-    s2s.model.save_weights('ape.model.h5')
+    s2s.model.save_weights('ape.model.h5') 
+'''
