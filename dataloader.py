@@ -21,7 +21,7 @@ class TokenList:
 
 
 def pad_to_longest(xs, tokens, max_len=999):
-    longest = min(len(max(xs, key=len)) + 2, max_len)
+    longest = max_len #min(len(max(xs, key=len)) + 2, max_len)
     print(longest)
     X = np.zeros((len(xs), longest), dtype='int32')
     X[:, 0] = tokens.startid()
